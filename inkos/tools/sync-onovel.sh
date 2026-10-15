@@ -63,7 +63,7 @@ rg -n -i '(api[_-]?key|token|secret|sk-or-|Bearer )' "$REPO_DIR" \
 if rg -n -e '(BAI_API_KEY|GEMINI_API_KEY|CLOUDFLARE_API_TOKEN|INKOS_LLM_API_KEY|HF_TOKEN|OPENROUTER_API_KEY)\s*=\s*["'\''][^$'"'"'][^"'\'']{8,}["'\'']' \
      -e 'sk-or-[A-Za-z0-9]{16,}' \
      -e 'Bearer [A-Za-z0-9._\-]{20,}' \
-     "$REPO_DIR" -g '!.git/**' >/dev/null 2>&1; then
+     "$REPO_DIR" -g '!.git/**' -g '!**/verify_agent_kit.py' >/dev/null 2>&1; then  # verify_agent_kit.py: known fake test fixture (also allowlisted for gitleaks below)
   echo "sync-onovel: ABORT — possible hardcoded secret detected (values not printed)." >&2
   echo "sync-onovel: re-check with: rg -n -i '(api[_-]?key|token|secret|sk-or-|Bearer )' $REPO_DIR" >&2
   exit 2

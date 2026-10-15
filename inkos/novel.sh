@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # novel.sh [--dry-run] [--stub] <book> [chapter hint...]   (REWRITTEN 2026-10-15 after /CODE loss; minimal)
 # 3-step pipeline for the next chapter of an inkos book in /CODE/inkos-books/xemtruyen/books/<id>:
-#   1 plan  : Gemini 3.8 Flash via pi-gemini (Antigravity)    2 draft : Gemini 3.8 Flash via pi-gemini
+#   1 plan / 2 draft: OpenRouter FREE models via tools/glm.py (nemotron-3-ultra:free > gemma-4-31b:free > openrouter/free) (tools/glm.py), NOVEL_LLM=glm (default) | gemini (legacy pi/Antigravity)
 #   3 polish: MiMo v2.6 Flash (tools/polish.py)
 # then gates: normalize-headings, stylegate (style lock), lockcheck (locked facts); one MiMo minimal-fix round (tools/fix.py)
 # if they fail; canon update + lessons. --dry-run: everything runs but the chapter is NOT written into the book and canon
 # is not updated (outputs stay in runs/). --stub: no LLM calls (copies the last chapter as the draft) to test plumbing.
 set -uo pipefail
 source ~/.profile >/dev/null 2>&1; eval "$(grep '^export ' /CODE/inkos/run-inkos.sh)"
-I=/CODE/inkos; T=$I/tools; P=${INKOS_PROJECT:-/CODE/inkos-books/xemtruyen}; GM=${NOVEL_GEMINI_MODEL:-gemini-3-8-flash}
+I=/CODE/inkos; T=$I/tools; P=${INKOS_PROJECT:-/CODE/inkos-books/xemtruyen}; GM=${NOVEL_GEMINI_MODEL:-gemini-3-8-flash}; LLM=${NOVEL_LLM:-glm}
 DRY=0; STUB=0; while [[ ${1:-} == --* ]]; do case $1 in --dry-run) DRY=1;; --stub) STUB=1;; esac; shift; done
 Q=${1:?usage: novel.sh [--dry-run] [--stub] <book> [hint]}; shift; HINT="$*"
 case $Q in tien|tt) Q=tien-tro;; dkgh) Q=dieu-khoan-gia-han;; pnntl) Q=pham-nhan-nghich-thien-luc;; tuc) Q=tuc-the;; esac
@@ -17,20 +17,23 @@ ID=$(basename "$B"); BIB="$B/style-bible.md"; [ -f "$BIB" ] || { echo "ERROR: $B
 LAST=$(ls "$B"/chapters/[0-9]*.md 2>/dev/null | sort | tail -1); N=$(( ${LAST:+10#$(basename "$LAST" | grep -oE '^[0-9]+')} + 1 ))
 R=$I/runs/$ID-$(printf %04d $N)-$(date +%Y%m%dT%H%M%S); mkdir -p "$R"; log(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$R/run.log" >&2; }
 log "book=$ID chapter=$N dry=$DRY stub=$STUB run=$R"
-OUTLINE=$(cat "$B"/story/outline/*.md "$B/de-cuong.md" 2>/dev/null | head -c 20000)
-{ echo "# QUY TẮC BIÊN TẬP"; cat $T/editor-guardrails.md; echo; python3 $T/lessons.py prompt "$B"; echo; python3 $T/skills.py prompt "$B" --max ${NOVEL_SKILLS_MAX:-90000}; echo; echo "# STYLE BIBLE (KHÓA)"; head -c 30000 "$BIB"
-  echo; python3 $T/canon.py context "$B" --n 5; echo; echo "# ĐỀ CƯƠNG"; echo "$OUTLINE"
+OUTLINE=$(cat "$B"/story/outline/*.md "$B/de-cuong.md" 2>/dev/null | head -c 10000)
+{ echo "# QUY TẮC BIÊN TẬP"; cat $T/editor-guardrails.md; echo; python3 $T/lessons.py prompt "$B"; echo; python3 $T/skills.py prompt "$B" --max ${NOVEL_SKILLS_MAX:-15000}; echo; echo "# STYLE BIBLE (KHÓA)"; head -c 15000 "$BIB"
+  echo; python3 $T/canon.py context "$B" --n 3; echo; echo "# ĐỀ CƯƠNG"; echo "$OUTLINE"
   echo; echo "# ĐOẠN CUỐI CHƯƠNG TRƯỚC"; [ -n "$LAST" ] && tail -c 4000 "$LAST"; } > "$R/context.md"
-gem(){ # gem <prompt-file> <out>
-  local f="$1.in.md"; head -c ${NOVEL_PROMPT_MAX:-400000} "$1" > "$f"  # pass as @file: argv limit is 128KB
+gem(){ # gem <prompt-file> <out>   (step 1/2 LLM; name kept for history)
+  local f="$1.in.md"; head -c ${NOVEL_PROMPT_MAX:-150000} "$1" > "$f"  # pass as @file: argv limit is 128KB
+  if [ "$LLM" = glm ]; then timeout 7200 python3 $T/glm.py "$f" "$2" 2> "$2.err"; local rc=$?; cat "$2.err" >> "$R/run.log"
+    [ $rc -eq 4 ] && { log "LLM BLOCKED (free quota): $(tail -1 "$2.err")"; exit 4; }
+    [ $rc -eq 0 ] && [ -s "$2" ] || { log "LLM failed rc=$rc: $(tail -3 "$2.err")"; return 1; }; return 0; fi
   timeout 1800 pi -p --no-session --provider antigravity --model "$GM" --thinking medium "@$f" "Thực hiện đúng phần NHIỆM VỤ ở cuối tệp đính kèm. Chỉ trả về kết quả." < /dev/null > "$2" 2> "$2.err"; local rc=$?
   [ $rc -eq 0 ] && [ -s "$2" ] || { log "Gemini failed rc=$rc: $(tail -3 "$2.err")"; return 1; }; }
 # 1 plan
 { cat "$R/context.md"; echo; echo "# NHIỆM VỤ"; echo "Lập dàn ý chi tiết cho Chương $N (5-8 cảnh, mỗi cảnh 2-4 câu: mục tiêu, xung đột, chuyển biến, móc cuối chương). Tuân thủ style bible, sự thật khóa, đề cương. Gợi ý của tác giả: ${HINT:-(không)}. Chỉ trả về dàn ý tiếng Việt."; } > "$R/plan.prompt"
-if [ $STUB = 1 ]; then echo "(stub plan) $HINT" > "$R/plan.md"; else log "step1 plan (Gemini $GM)"; gem "$R/plan.prompt" "$R/plan.md" || exit 3; fi
+if [ $STUB = 1 ]; then echo "(stub plan) $HINT" > "$R/plan.md"; else log "step1 plan ($LLM)"; gem "$R/plan.prompt" "$R/plan.md" || exit 3; fi
 # 2 draft
-{ cat "$R/context.md"; echo; echo "# DÀN Ý CHƯƠNG $N"; cat "$R/plan.md"; echo; echo "# NHIỆM VỤ"; echo "Viết toàn văn Chương $N theo dàn ý, đúng giọng và định dạng tiêu đề trong style bible (dòng đầu là tiêu đề chương). Thoại trong ngoặc kép thẳng, không dấu gạch dài, không chữ Hán, không ghi chú. Chỉ trả về chương."; } > "$R/draft.prompt"
-if [ $STUB = 1 ]; then { echo "# Chương $N: Bản thử"; tail -n +2 "$LAST"; } > "$R/draft.md"; else log "step2 draft (Gemini $GM)"; gem "$R/draft.prompt" "$R/draft.md" || exit 3; fi
+{ cat "$R/context.md"; echo; echo "# DÀN Ý CHƯƠNG $N"; cat "$R/plan.md"; echo; echo "# NHIỆM VỤ"; echo "Viết toàn văn Chương $N theo dàn ý, đúng giọng và định dạng tiêu đề trong style bible (dòng đầu là tiêu đề chương). Độ dài BẮT BUỘC: khoảng ${NOVEL_WORDS:-3000} chữ (tối thiểu ${NOVEL_MIN_WORDS:-2400} chữ); triển khai đầy đủ từng cảnh trong dàn ý bằng hành động, thoại, chi tiết cảm giác, không tóm tắt. Thoại trong ngoặc kép thẳng, không dấu gạch dài, không chữ Hán, không ghi chú. Chỉ trả về chương."; } > "$R/draft.prompt"
+if [ $STUB = 1 ]; then { echo "# Chương $N: Bản thử"; tail -n +2 "$LAST"; } > "$R/draft.md"; else log "step2 draft ($LLM)"; for k in 1 2 3; do gem "$R/draft.prompt" "$R/draft.md" || exit 3; w=$(wc -w < "$R/draft.md"); log "draft try $k: $w words"; [ $w -ge ${NOVEL_MIN_WORDS:-2400} ] && break; cp "$R/draft.md" "$R/draft.short$k.md"; done; fi
 STY=colon; grep -q 'Chương N ·' "$BIB" && STY=dot
 python3 $T/normalize-headings.py --style $STY "$R/draft.md" >/dev/null
 # 3 polish
