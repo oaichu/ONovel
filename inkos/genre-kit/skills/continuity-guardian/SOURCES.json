@@ -1,0 +1,11 @@
+{
+ "sources": [
+  "Chinese-WebNovel-Skill/references/modules/consistency_review/runtime.md",
+  "Novel-OS/agents/continuity_guardian/prompt.md",
+  "Novel-OS/agents/editor/prompt.md",
+  "book-os/claude-code/agents/continuity-checker.md",
+  "book-os/claude-code/agents/prose-reviewer.md",
+  "chinese-webnovel-skills/references/continuity-check.md",
+  "long-novel-agent-kit/docs/adversarial-verification.md"
+ ]
+}

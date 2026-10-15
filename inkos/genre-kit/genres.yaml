@@ -1,0 +1,32 @@
+# genre-kit/genres.yaml (REWRITTEN 2026-10-15, minimal). Defaults merged into a new book's style-bible front matter.
+tien-hiep:
+  label: tiên hiệp / huyền huyễn / tu tiên
+  inkos_genre: xianxia
+  register: "Hán-Việt cổ phong; ta, ngươi, hắn, nàng, sư phụ, sư huynh, đạo hữu, tại hạ, tiền bối, vãn bối, bản tọa, lão phu"
+  banned: [OK, okay, oke, app, internet, điện thoại, máy tính, xe hơi, ô tô, công ty, sếp, cà phê, selfie, share, like, drama, chill, cool, bro, xịn, vãi, đồng hồ, trường học]
+  llm_only: [tôi, chú, thím, dì, cậu, anh, em, mày, tao]
+  card: cards/card-dong-phuong-tien-hiep.md
+ngon-tinh-hien-dai:
+  label: ngôn tình hiện đại / đô thị / công sở
+  inkos_genre: urban
+  register: "tiếng Việt đời thường chuẩn mực; anh, em, tôi, cô, cậu, chú, bác"
+  banned: [huynh, muội, tại hạ, bản tọa, đạo hữu, linh lực, công tử, tiểu thư, nàng, chàng, ngươi]
+  llm_only: [ta]
+  card: cards/ngon-tinh-hien-dai.md
+do-thi-di-nang:
+  label: đô thị dị năng / hệ thống
+  inkos_genre: urban
+  register: "hiện đại, cho phép thuật ngữ hệ thống trong khung thông báo"
+  banned: [tại hạ, bản tọa, đạo hữu, ngươi, huynh, muội]
+  llm_only: [ta]
+  card: cards/do-thi-di-nang.md
+# --- skill/card loading per book (restored 2026-10-15; read by tools/skills.py) ---
+skill_sets:
+  tien-hiep: {skills: [worldbuilding, cultivation-rules, foreshadowing, character-psychology, etiquette-address, pacing, continuity-guardian, anti-ai-prose], cards: [card-dong-phuong-tien-hiep, card-truyen-thong-huyen-huyen, card-sang-diem]}
+  ngon-tinh-co-dai: {skills: [worldbuilding, foreshadowing, character-psychology, romance-arcs, etiquette-address, palace-intrigue, pacing, continuity-guardian, anti-ai-prose], cards: [card-huyen-huyen-ngon-tinh]}
+  ngon-tinh-hien-dai: {skills: [foreshadowing, character-psychology, romance-arcs, modern-cn-romance, palace-intrigue, etiquette-address, pacing, continuity-guardian, anti-ai-prose], cards: []}
+books:
+  tien-tro: tien-hiep
+  pham-nhan-nghich-thien-luc: tien-hiep
+  tuc-the: tien-hiep
+  dieu-khoan-gia-han: ngon-tinh-hien-dai

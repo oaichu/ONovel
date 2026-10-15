@@ -1,0 +1,12 @@
+{
+ "sources": [
+  "Chinese-WebNovel-Skill/references/modules/chapter_ending/runtime.md",
+  "Chinese-WebNovel-Skill/references/modules/transition/runtime.md",
+  "chinese-webnovel-skills/references/sentence-rhythm.md",
+  "chinese-webnovel-skills/references/length-standards.md",
+  "chinese-webnovel-skills/references/hook-library.md",
+  "chinese-novelist-skill/references/guides/chapter-guide.md",
+  "oh-story-claudecode/skills/story-long-write/references/long-chapter-hooks.md",
+  "oh-story-qin/skills/story-long-write/references/outline-rhythm.md"
+ ]
+}

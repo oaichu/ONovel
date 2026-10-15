@@ -1,0 +1,37 @@
+# secrets & env
+.env
+.env.*
+*.env
+!.env.example
+
+# python / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# backups & local junk
+*.bak
+*.bak-*
+*.bak*
+*~
+.DS_Store
+
+# runtime
+runs/
+**/runs/
+*.log
+
+# vendor clones (kept local under genre-kit/vendor)
+genre-kit/vendor/
+inkos/genre-kit/vendor/
+
+# book content & website (never ship)
+inkos-books/
+oaichu-novels/
+
+# editor / IDE
+.idea/
+.vscode/
+*.swp

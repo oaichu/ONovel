@@ -1,0 +1,11 @@
+{
+ "sources": [
+  "xianxia-cultivation-agent-skills/skills/xianxia-script-doctor/references/power-consistency.md",
+  "xianxia-cultivation-agent-skills/skills/xianxia-asset-bible/references/asset-schema.md",
+  "chinese-webnovel-skills/references/goldfinger-types.md",
+  "chinese-webnovel-skills/skills/goldfinger/SKILL.md",
+  "chinese-webnovel-skills/skills/shuangdian/SKILL.md",
+  "oh-story-qin/skills/story-long-write/references/style-combat-face.md",
+  "oh-story-qin/skills/story-long-write/references/reader-contract-and-progression.md"
+ ]
+}

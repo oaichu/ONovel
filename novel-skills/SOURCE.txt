@@ -1,0 +1,2 @@
+source: zenstory-ai/oh-story-claudecode@6954282 ported 2026-10-15
++ 2026-10-15 restored: novel-setup, novel-cover, novel-browser-cdp (oh-story-claudecode@c945de6), novel-continuity (mushroomfk/long-novel-agent-kit@6287968), novel-plan (forsonny/book-os@bf15599 + mrigankad/Novel-OS@1bd4b57)

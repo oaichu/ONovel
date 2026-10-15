@@ -1,0 +1,12 @@
+{
+ "sources": [
+  "Chinese-WebNovel-Skill/references/modules/concept_planning/runtime.md",
+  "chinese-webnovel-skills/references/worldbuilding.md",
+  "chinese-webnovel-skills/skills/world/SKILL.md",
+  "xianxia-cultivation-agent-skills/skills/xianxia-asset-bible/SKILL.md",
+  "xianxia-cultivation-agent-skills/skills/xianxia-asset-bible/references/asset-schema.md",
+  "xianxia-cultivation-agent-skills/skills/xianxia-asset-bible/references/reference-budget.md",
+  "Novel-OS/templates/story_bible/template.md",
+  "book-os/standards/genre-guides/fantasy-sci-fi.md"
+ ]
+}
