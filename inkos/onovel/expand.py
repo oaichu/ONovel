@@ -6,6 +6,7 @@ import os, subprocess, sys
 from . import TOOLS
 from .gates import count_words
 def expand(run_dir, min_words=2400, target=3000, passes=2, llm=None, log=print):
+    """Returns final word count, or -4 when the free models are blocked."""
     d = os.path.join(run_dir, "draft.md"); plan = open(os.path.join(run_dir, "plan.md"), encoding="utf-8").read() if os.path.exists(os.path.join(run_dir, "plan.md")) else ""
     ctx = open(os.path.join(run_dir, "context.md"), encoding="utf-8").read()[:30000] if os.path.exists(os.path.join(run_dir, "context.md")) else ""
     for k in range(1, passes + 1):
@@ -28,4 +29,8 @@ def expand(run_dir, min_words=2400, target=3000, passes=2, llm=None, log=print):
         os.replace(d, os.path.join(run_dir, f"draft.pre-expand{k}.md")); os.replace(out, d); log(f"expand pass {k}: {w} -> {nw} words")
     return count_words(open(d, encoding="utf-8").read())
 def _glm(prompt, out):
-    return subprocess.run(["timeout", "3600", sys.executable, os.path.join(TOOLS, "glm.py"), prompt, out], stderr=open(out + ".err", "w")).returncode
+    """glm.py stderr goes to the run's run.log so progress stays visible (and the supervisor sees a live log)."""
+    rl = os.path.join(os.path.dirname(out), "run.log")
+    with open(rl, "a", encoding="utf-8") as f:
+        f.write(f"expand: calling free model chain for {os.path.basename(out)}\n"); f.flush()
+        return subprocess.run(["timeout", "3600", sys.executable, os.path.join(TOOLS, "glm.py"), prompt, out], stderr=f).returncode
