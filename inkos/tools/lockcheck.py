@@ -8,7 +8,7 @@ import sys, os, re, json, argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bookfiles as bf
 from onovel import gates
-NEG = re.compile(r"(?<![\wÀ-ỹ])(không|chẳng|chưa|không thể|đâu có|chả)(?![\wÀ-ỹ])", re.I)
+NEG = re.compile(r"(?<![\wÀ-ỹ])(không|chẳng|chưa|không thể|đâu có|chả|cấm|không cho phép)(?![\wÀ-ỹ])", re.I)
 def active(book, n):
     from onovel import state
     return state.active_facts(book, n)
@@ -19,7 +19,7 @@ def check(book, chap, use_llm=True, chat=None):
         if any(a and a in text for a in ai): continue
         for rx in f.get("forbid") or []:
             for m in re.finditer(rx, text):
-                if NEG.search(text[max(m.start(), m.end() - 40):m.end()]): continue
+                if NEG.search(text[max(m.start(), m.end() - 60):m.end()]): continue
                 s = max(0, m.start() - 80)
                 blocking.append(dict(rule_id=f"fact:{f['id']}", source="rule", severity="high", confidence=1.0,
                                      evidence_span=text[s:m.end() + 80], reason=f"khớp mẫu cấm {rx}", word=m.group(0), para=None))

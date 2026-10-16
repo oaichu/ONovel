@@ -39,7 +39,7 @@ gem(){ # gem <prompt-file> <out>   step 1/2 LLM: Gemini (pi-gemini/Antigravity, 
     grep -qiE "authenticat|login|unauthori|401" "$2.err" && { touch $GD; log "gemini auth failure -> flag $GD set for 1h"; }
     log "Gemini failed rc=$rc: $(tail -2 "$2.err" | tr '\n' ' ' | cut -c1-300) -> fallback OpenRouter FREE (glm.py)"
   fi
-  timeout 3600 python3 $T/glm.py "$f" "$2" 2> "$2.err"; local rc=$?; cat "$2.err" >> "$R/run.log"
+  timeout 3600 python3 $T/glm.py "$f" "$2" 2> >(tee "$2.err" >> "$R/run.log"); local rc=$?; sleep 1  # live progress in run.log (supervisor sees it)
   [ $rc -eq 4 ] && { log "LLM BLOCKED (gemini + free quota): $(tail -1 "$2.err")"; echo "[$(date '+%F %T')] $ID ch$N: gemini and all OpenRouter free models blocked" >> $RUNS/llm-blocked.txt; exit 4; }
   [ $rc -eq 0 ] && [ -s "$2" ] || { log "LLM failed rc=$rc: $(tail -3 "$2.err")"; return 1; }; return 0; }
 # 1 plan
