@@ -5,6 +5,16 @@ description: Long-form novel continuity kit for local desktop agents. Use when p
 
 # Long Novel Agent
 
+## ONovel integration (authoritative state, 2026-10-16)
+
+For books produced by the ONovel/InkOS pipeline (`/CODE/inkos`, books with `onovel.yaml`), the ONE authoritative story state is
+`<book>/.onovel/state.db`, written only by `onovel commit` after a chapter's gates PASS (module `inkos/onovel/state.py`).
+This kit is then a reader/proposer, never a second writer:
+- read state: `onovel context <book> <n>` (chapter-safe, visibility-windowed context), `onovel status <book>`, the generated views
+  `story/current_state.md`, `story/chapter_summaries.md`, `locked_facts.yaml`;
+- propose: author-confirmed facts via `onovel facts-add`; extracted facts land in the `proposals` table, never auto-locked;
+- do NOT run writer commands (`apply-proposal`, `record-chapter`, `.novel-agent` writes) against ONovel books.
+
 Use this skill to write long novels with durable continuity across sessions and across different agents. Let the host agent use its own parsing, search, web, PDF/OCR, image, and long-context abilities; use this kit to persist accepted facts and produce chapter-safe context.
 
 ## Required Workflow

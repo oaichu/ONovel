@@ -10,15 +10,11 @@ while rest.lstrip().startswith('#'):  # keep repeated title headings (imported c
 prompt = ("Bạn là biên tập viên tiên hiệp. Sửa TỐI THIỂU chương dưới đây theo đúng các chỉ dẫn/lỗi liệt kê; chỉ đổi từ hoặc câu bị nêu, "
   "giữ nguyên mọi đoạn khác từng chữ, không đổi sự kiện, tên riêng, số đoạn. Thoại dùng dấu nháy kép thẳng \", cấm dấu gạch dài. "
   "Tu sĩ không xưng 'tôi'. Chỉ trả về toàn văn chương đã sửa (không tiêu đề, không giải thích).\n\nCHỈ DẪN/LỖI:\n" + inst + "\n\nCHƯƠNG:\n" + rest.strip())
-body = json.dumps({"model": sg.MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.2, "max_tokens": 16000,
-                   "thinking": {"type": "disabled"}}).encode()
-key = os.environ.get("LOCKCHECK_API_KEY") or os.environ.get("BAI_API_KEY") or os.environ.get("INKOS_LLM_API_KEY")
-req = urllib.request.Request(os.environ.get("LOCKCHECK_BASE_URL", "https://api.b.ai/v1").rstrip("/") + "/chat/completions", body,
-      {"Authorization": "Bearer " + key, "Content-Type": "application/json"})
-out = json.load(urllib.request.urlopen(req, timeout=900))["choices"][0]["message"]["content"] or ""
+import mimo
+out = mimo.chat(prompt, temperature=0.2, max_tokens=16000)  # streaming, 20s/90s/5min timeouts, 1 retry
 out = re.sub(r"^```\w*\n|\n```\s*$", "", out.strip())
 if out.lstrip().startswith("#"): out = out.split("\n", 1)[1]
-wd, wo = len(rest.split()), len(out.split()); lost = sorted(pl.names(rest) - pl.names(out))
+wd, wo = len(rest.split()), len(out.split()); lost = sorted(n for n in pl.names(rest) - pl.names(out) if n not in inst)  # names the fix list asked to change may go
 why = None
 if not out.strip() or abs(wo - wd) > 0.05 * wd: why = f"length {wd}->{wo}"
 elif pl.HAN.search(out): why = "Han"

@@ -1,0 +1,19 @@
+# ONovel CI (source: inkos/ci/github-ci.yml, copied to .github/workflows/ci.yml by inkos/tools/sync-onovel.sh)
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pytest pyyaml jsonschema
+      - name: pytest (mocked LLM, no network)
+        env: { ONOVEL_HOME: "${{ github.workspace }}/inkos", ONOVEL_LESSONS: "${{ github.workspace }}/lessons-library", ONOVEL_MOCK_LLM: "" }
+        run: python -m pytest -q inkos/tests
+      - name: shell smoke test (mocked LLM)
+        env: { ONOVEL_HOME: "${{ github.workspace }}/inkos" }
+        run: bash inkos/tests/smoke.sh
+      - name: bash syntax
+        run: for f in inkos/*.sh inkos/tools/*.sh inkos/tests/*.sh inkos/bin/onovel; do bash -n "$f"; done

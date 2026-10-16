@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# onovel: ONovel core CLI (python package /CODE/inkos/onovel). See: onovel --help
+H="${ONOVEL_HOME:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
+PYTHONPATH="$H${PYTHONPATH:+:$PYTHONPATH}" ONOVEL_HOME="$H" exec python3 -m onovel "$@"

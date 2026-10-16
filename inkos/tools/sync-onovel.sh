@@ -26,6 +26,10 @@ tar -C "$SRC_ROOT/inkos" -cf - \
   --exclude='.env' \
   --exclude='*.env' \
   --exclude='*.log' \
+  --exclude='scratch_*' \
+  --exclude='.onovel' \
+  --exclude='*.db' \
+  --exclude='.pytest_cache' \
   . | tar -C "$STAGE/inkos" -xf -
 
 if [[ -d "$SRC_ROOT/novel-skills" ]]; then
@@ -53,6 +57,17 @@ cp -a "$STAGE/lessons-library" "$REPO_DIR/lessons-library"
 mkdir -p "$REPO_DIR/inkos/tools"
 cp -a "$SRC_ROOT/inkos/tools/sync-onovel.sh" "$REPO_DIR/inkos/tools/sync-onovel.sh"
 chmod +x "$REPO_DIR/inkos/tools/sync-onovel.sh" "$SRC_ROOT/inkos/tools/sync-onovel.sh"
+
+# CI workflow lives in inkos/ci (single source)
+# (pushing .github/workflows needs a token with `workflow` scope; opt in with ONOVEL_SYNC_WORKFLOW=1)
+if [[ "${ONOVEL_SYNC_WORKFLOW:-0}" == 1 ]]; then mkdir -p "$REPO_DIR/.github/workflows"; cp "$SRC_ROOT/inkos/ci/github-ci.yml" "$REPO_DIR/.github/workflows/ci.yml"; fi
+
+# Tests must pass before anything is committed (mocked LLM, no network)
+PY_T="${ONOVEL_PYTHON:-python3}"
+if "$PY_T" -c 'import pytest' 2>/dev/null; then
+  ( cd "$REPO_DIR" && ONOVEL_HOME="$REPO_DIR/inkos" "$PY_T" -m pytest -q inkos/tests ) || die "tests failed; not committing"
+  ( ONOVEL_HOME="$REPO_DIR/inkos" bash "$REPO_DIR/inkos/tests/smoke.sh" ) || die "smoke test failed; not committing"
+else echo "sync-onovel: WARN pytest not installed (set ONOVEL_PYTHON); CI will run the tests"; fi
 
 # Secret scan (fail if literal named keys / sk-or- / Bearer tokens look embedded)
 SCAN_TMP="$(mktemp)"
