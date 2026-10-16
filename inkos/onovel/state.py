@@ -238,3 +238,21 @@ def migrate(book, published_upto=0, force=False):
                 if m: c.execute("INSERT OR IGNORE INTO foreshadowing(content, planted_chapter) VALUES(?,?)", (m.group(1).strip()[:500], 0)); n_h += 1
         c.execute("INSERT OR REPLACE INTO meta VALUES('migrated', ?)", (now(),)); audit(c, "migrate", "migrate", {"facts": n_f, "chapters": n_c})
     return {"facts": n_f, "chapters": n_c, "proposals": n_p, "foreshadowing": n_h}
+def sync_files(book, published_upto=0):
+    """Add chapter files missing from the ledger (e.g. written by `inkos import` after migration) as legacy rows."""
+    have = {r["n"] for r in chapters(book)}; added = []
+    with writer(book, "sync") as c:
+        for fn in chapter_files(book):
+            n = int(re.match(r"\d+", fn).group(0))
+            if n in have: continue
+            t = open(os.path.join(book, "chapters", fn), encoding="utf-8").read(); pub = n <= published_upto
+            c.execute("INSERT INTO chapters(n,title,sha256,words,status,summary,file,committed_at,published_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                      (n, re.sub(r"^#+\s*", "", t.split("\n", 1)[0]).strip(), sha(t), count_words(t), "PUBLISHED" if pub else "COMMITTED", "", fn, now(), now() if pub else None))
+            added.append(n)
+        if added: audit(c, "sync", "sync_files", {"added": added})
+    return {"synced": added}
+def revise_chapter(book, n, text, file, actor="revise"):
+    """Revision of an existing chapter (e.g. expansion): new sha/words; canon facts are unchanged by contract."""
+    with writer(book, actor) as c:
+        c.execute("UPDATE chapters SET sha256=?, words=?, status='COMMITTED', file=?, committed_at=? WHERE n=?", (sha(text), count_words(text), file, now(), n))
+        audit(c, actor, "revise_chapter", {"n": n, "sha256": sha(text), "words": count_words(text)})

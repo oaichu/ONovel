@@ -16,14 +16,14 @@ def cmd_new(a):
              narration="Ngôi thứ 3 giới hạn",
              xung_ho=dict(rules=(["tu sĩ không bao giờ xưng 'tôi'; dùng ta/ngươi/tại hạ/bản tọa/vãn bối", "chỉ phàm nhân mới có thể xưng 'tôi'"] if tien else ["xưng hô hiện đại tự nhiên theo quan hệ"]) + ["thoại trong ngoặc kép thẳng, không dấu gạch dài"],
                           **({"forbidden_for": {"tu sĩ": ["tôi"]}} if tien else {})),
-             layout=dict(heading_style="colon", blocking=["heading", "length"], target_words=3000, min_words=1800, max_words=7500),
+             layout=dict(heading_style="colon", blocking=["heading", "length"], target_words=3200, min_words=3000, max_words=8000),
              soft_max=3, max_attempts=3, state_domains=(["realms", "secrets", "treasures", "promises", "foreshadowing"] if tien else ["relationships", "secrets", "promises", "foreshadowing"]))
     mf.validate(m)
     for d in ("chapters", "story/outline", "story/roles", ".onovel/chapters"): os.makedirs(os.path.join(root, d), exist_ok=True)
     import yaml
     atomic_write(os.path.join(root, "onovel.yaml"), yaml.safe_dump(m, allow_unicode=True, sort_keys=False))
     fm = dict(locked=True, genre=g.get("label", a.genre), register=g.get("register", ""), banned=g.get("banned", []), llm_only=g.get("llm_only", []),
-              layout={"heading": "Chương N: Tên chương", "length_words": [2400, 4000]})
+              layout={"heading": "Chương N: Tên chương", "length_words": [3000, 5000]})
     atomic_write(os.path.join(root, "style-bible.md"), "---\n" + yaml.safe_dump(fm, allow_unicode=True, sort_keys=False) + "---\n\n# Style bible: " + a.title +
                  "\n\n- Giọng kể: (điền)\n- Xưng hô: " + "; ".join(m["xung_ho"]["rules"]) + "\n- Thoại: ngoặc kép thẳng \"...\", cấm dấu gạch dài.\n")
     atomic_write(os.path.join(root, "story", "outline", "story_frame.md"), f"# {a.title}\n\n(Tiền đề, nhân vật chính, xung đột trung tâm.)\n\nCh 1–20: (mạch truyện quyển 1)\n")
@@ -47,7 +47,9 @@ def main(argv=None):
     p = sp.add_parser("check-publish"); p.add_argument("book"); p.add_argument("n", type=int); p.add_argument("file")
     p = sp.add_parser("mark-published"); p.add_argument("book"); p.add_argument("n", type=int)
     p = sp.add_parser("regate"); p.add_argument("book"); p.add_argument("n", type=int); p.add_argument("--no-llm", action="store_true"); p.add_argument("--out")
-    p = sp.add_parser("expand"); p.add_argument("run_dir"); p.add_argument("--min", type=int, default=2400); p.add_argument("--target", type=int, default=3000)
+    p = sp.add_parser("expand"); p.add_argument("run_dir"); p.add_argument("--min", type=int, default=3000); p.add_argument("--target", type=int, default=3200); p.add_argument("--passes", type=int, default=2)
+    p = sp.add_parser("draft-scenes"); p.add_argument("run_dir"); p.add_argument("n", type=int); p.add_argument("--target", type=int, default=3200)
+    p = sp.add_parser("revise-expand"); p.add_argument("book"); p.add_argument("n", type=int); p.add_argument("--runs", default=None)
     p = sp.add_parser("learn"); p.add_argument("book"); p.add_argument("gate_json"); p.add_argument("n", type=int)
     p = sp.add_parser("status"); p.add_argument("book")
     p = sp.add_parser("facts-add"); p.add_argument("book"); p.add_argument("id"); p.add_argument("entity"); p.add_argument("fact"); p.add_argument("--since", type=int, default=1)
@@ -65,10 +67,12 @@ def main(argv=None):
         if v is None: v = mf.get(m, a.key, "")
         print(" ".join(map(str, v)) if isinstance(v, list) else v); return 0
     if a.cmd == "migrate":
-        r = state.migrate(b, a.published_upto, a.force); state.render_views(b)
+        r = state.migrate(b, a.published_upto, a.force)
+        if r.get("skipped"): r = state.sync_files(b, a.published_upto)
+        state.render_views(b)
         for n in [c["n"] for c in state.chapters(b)]:
             row = state.chapter(b, n)
-            if not txn.load(b, n):
+            if not txn.load(b, n) and row:
                 txn.record(b, n, "PUBLISHED" if row["status"] == "PUBLISHED" else "LEGACY", sha=row["sha256"], gate={"verdict": "LEGACY", "note": "pre-ONovel chapter; run onovel regate to approve"}, file=row["file"], detail="migrate")
         print(json.dumps(r, ensure_ascii=False)); return 0
     if a.cmd == "next": print(state.next_chapter(b)); return 0
@@ -95,7 +99,14 @@ def main(argv=None):
         if a.out: atomic_write(a.out, json.dumps(g, ensure_ascii=False, indent=1))
         r = txn.approve_existing(b, a.n, f, g); print(f"ch{a.n} {r['status']} {gates.summary(g)}"); return gates.EXIT[g["verdict"]]
     if a.cmd == "expand":
-        w = ex.expand(a.run_dir, a.min, a.target, log=lambda s: print(s, file=sys.stderr)); print(w); return 4 if w == -4 else 0
+        w = ex.expand(a.run_dir, a.min, a.target, passes=a.passes, log=lambda s: print(s, file=sys.stderr)); print(w); return 4 if w == -4 else 0
+    if a.cmd == "draft-scenes":
+        from . import scenes
+        w = scenes.draft_scenes(a.run_dir, a.n, a.target, log=lambda s: print(s, file=sys.stderr)); print(w)
+        return 4 if w == -4 else 3 if w < 0 else 0
+    if a.cmd == "revise-expand":
+        from . import revise
+        r = revise.revise_expand(b, a.n, a.runs); print(json.dumps(r, ensure_ascii=False)); return 0 if r["status"] in ("REVISED", "OK") else 5
     if a.cmd == "learn":
         m = mf.load(b); lessons.from_gate(b, m["genre_id"], a.n, json.load(open(a.gate_json, encoding="utf-8"))); return 0
     if a.cmd == "status":

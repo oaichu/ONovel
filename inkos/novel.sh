@@ -21,12 +21,15 @@ B="$P/books/$Q"; [ -d "$B" ] || { echo "ERROR: book '$Q' not found in $P/books" 
 ID=$(basename "$B"); RUNS=${ONOVEL_RUNS:-$I/runs}
 $ON validate "$B" >&2 || { echo "ERROR: $B/onovel.yaml invalid (see above)" >&2; exit 2; }
 BIB="$B/$($ON get "$B" style_profile)"; [ -f "$BIB" ] || { echo "ERROR: $BIB missing (style lock required)" >&2; exit 2; }
-if [ ! -f "$B/.onovel/state.db" ]; then SITE=${ONOVEL_SITE_CHAPTERS:-/CODE/oaichu-novels/src/content/chapters}/$($ON get "$B" publish.site_book_id 2>/dev/null || echo $ID)
+SITE=${ONOVEL_SITE_CHAPTERS:-/CODE/oaichu-novels/src/content/chapters}/$ID
+$ON migrate "$B" --published-upto $(ls "$SITE" 2>/dev/null | wc -l) >/dev/null || exit 2   # first run: migrate; later: sync new chapter files into the ledger
+if false; then SITE=${ONOVEL_SITE_CHAPTERS:-/CODE/oaichu-novels/src/content/chapters}/$($ON get "$B" publish.site_book_id 2>/dev/null || echo $ID)
   $ON migrate "$B" --published-upto $(ls "$SITE" 2>/dev/null | wc -l) >&2 || exit 2; fi
 N=$($ON next "$B") || exit 2; LAST=$(ls "$B"/chapters/$(printf %04d $((N-1)))*.md 2>/dev/null | head -1)
-TW=$($ON get "$B" layout.target_words); TW=${NOVEL_WORDS:-${TW:-3000}}; MINW=${NOVEL_MIN_WORDS:-2400}
+TW=$($ON get "$B" layout.target_words); TW=${NOVEL_WORDS:-${TW:-3000}}; MINW=$($ON get "$B" layout.min_words); MINW=${NOVEL_MIN_WORDS:-${MINW:-3000}}; ROUNDS=${ONOVEL_EXPAND_ROUNDS:-4}
 STY=$($ON get "$B" layout.heading_style); MAXATT=$($ON get "$B" max_attempts); SOFTMAX=$($ON get "$B" soft_max)
 R=$RUNS/$ID-$(printf %04d $N)-$(date +%Y%m%dT%H%M%S); mkdir -p "$R"; log(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$R/run.log" >&2; }
+wc_(){ python3 -c "import sys;sys.path.insert(0,'$I');from onovel.gates import count_words;print(count_words(open('$1').read()))"; }
 log "book=$ID chapter=$N dry=$DRY stub=$STUB run=$R"
 $ON context "$B" $N --hint "$HINT" > "$R/context.md" || { log "context build failed"; exit 2; }
 log "context: $(wc -c < "$R/context.md") bytes (semantic retrieval, budget ${ONOVEL_CTX_TOKENS:-18000} tokens)"
@@ -43,24 +46,33 @@ gem(){ # gem <prompt-file> <out>   step 1/2 LLM: Gemini (pi-gemini/Antigravity, 
   [ $rc -eq 4 ] && { log "LLM BLOCKED (gemini + free quota): $(tail -1 "$2.err")"; echo "[$(date '+%F %T')] $ID ch$N: gemini and all OpenRouter free models blocked" >> $RUNS/llm-blocked.txt; exit 4; }
   [ $rc -eq 0 ] && [ -s "$2" ] || { log "LLM failed rc=$rc: $(tail -3 "$2.err")"; return 1; }; return 0; }
 # 1 plan
-{ cat "$R/context.md"; echo; echo "# NHIỆM VỤ"; echo "Lập dàn ý chi tiết cho Chương $N (5-8 cảnh, mỗi cảnh 2-4 câu: mục tiêu, xung đột, chuyển biến, móc cuối chương). Tuân thủ style bible, sự thật khóa, nợ cốt truyện, đề cương. Gợi ý của tác giả: ${HINT:-(không)}. Chỉ trả về dàn ý tiếng Việt."; } > "$R/plan.prompt"
+{ cat "$R/context.md"; echo; echo "# NHIỆM VỤ"; echo "Lập dàn ý chi tiết cho Chương $N gồm 4-5 cảnh; MỖI cảnh bắt đầu bằng một dòng riêng dạng '## Cảnh k: <tên cảnh>' rồi 3-5 câu: mục tiêu, xung đột, chuyển biến, chi tiết cụ thể; cảnh cuối có móc cuối chương. Tuân thủ style bible, sự thật khóa, nợ cốt truyện, đề cương. Gợi ý của tác giả: ${HINT:-(không)}. Chỉ trả về dàn ý tiếng Việt."; } > "$R/plan.prompt"
 if [ $STUB = 1 ]; then echo "(stub plan) $HINT" > "$R/plan.md"; else log "step1 plan ($LLM)"; gem "$R/plan.prompt" "$R/plan.md" || exit 3; fi
 # 2 draft
 { cat "$R/context.md"; echo; echo "# DÀN Ý CHƯƠNG $N"; cat "$R/plan.md"; echo; echo "# NHIỆM VỤ"; echo "Viết toàn văn Chương $N theo dàn ý, đúng giọng và định dạng tiêu đề trong style bible (dòng đầu là tiêu đề chương). Độ dài BẮT BUỘC: khoảng $TW chữ (tối thiểu $MINW chữ); triển khai đầy đủ từng cảnh trong dàn ý bằng hành động, thoại, chi tiết cảm giác, không tóm tắt. Thoại trong ngoặc kép thẳng, không dấu gạch dài, không chữ Hán, không ghi chú; tu sĩ không xưng 'tôi'. Chỉ trả về chương."; } > "$R/draft.prompt"
 if [ $STUB = 1 ]; then { echo "# Chương $N: Bản thử"; if [ -n "$LAST" ]; then tail -n +2 "$LAST"; else tail -n +2 "${ONOVEL_STUB_TEXT:-/dev/null}"; fi; } > "$R/draft.md"
-else log "step2 draft ($LLM)"
-  for k in 1 2 3; do gem "$R/draft.prompt" "$R/draft.md" || exit 3
-    dc=$(python3 $T/draftcheck.py "$R/draft.md" $TW) && { log "draft try $k: $dc"; break; }
-    log "draft try $k REJECTED: $dc"; mv "$R/draft.md" "$R/draft.bad$k.md"; done
-  [ -s "$R/draft.md" ] || { log "no usable draft (all 3 rejected as degenerate)"; exit 3; }
-  w=$(python3 -c "import sys;sys.path.insert(0,'$I');from onovel.gates import count_words;print(count_words(open('$R/draft.md').read()))")
-  if [ $w -lt $MINW ]; then log "draft short ($w < $MINW): expand missing scenes (free model)"; ew=$($ON expand "$R" --min $MINW --target $TW 2>>"$R/run.log"); erc=$?
-    [ $erc = 4 ] && { log "LLM BLOCKED during expand"; exit 4; }; log "after expand: ${ew:-?} words"; fi
+else log "step2 draft scene by scene ($LLM -> free models)"
+  $ON draft-scenes "$R" $N --target $TW 2>>"$R/run.log"; drc=$?
+  [ $drc = 4 ] && { log "LLM BLOCKED during scene drafting"; exit 4; }
+  if [ $drc != 0 ] || [ ! -s "$R/draft.md" ]; then log "scene drafting failed (rc=$drc): whole-chapter fallback"
+    for k in 1 2 3; do gem "$R/draft.prompt" "$R/draft.md" || exit 3
+      dc=$(python3 $T/draftcheck.py "$R/draft.md" $TW) && { log "draft try $k: $dc"; break; }
+      log "draft try $k REJECTED: $dc"; mv "$R/draft.md" "$R/draft.bad$k.md"; done
+    [ -s "$R/draft.md" ] || { log "no usable draft (all 3 rejected as degenerate)"; exit 3; }; fi
+  w=$(wc_ "$R/draft.md"); log "draft: $w words"; GOAL=$(( MINW * 105 / 100 ))
+  for k in $(seq 1 $ROUNDS); do [ $w -ge $GOAL ] && break
+    log "expand round $k/$ROUNDS ($w < $GOAL)"; ew=$($ON expand "$R" --min $GOAL --target $TW --passes 1 2>>"$R/run.log"); [ $? = 4 ] && { log "LLM BLOCKED during expand"; exit 4; }
+    w=$(wc_ "$R/draft.md"); done
+  [ $w -ge $MINW ] || { log "still short after $ROUNDS expand rounds ($w < $MINW) -> quarantine, retry later"; $ON quarantine "$B" "$R" $N "short draft $w < $MINW" >&2; exit 5; }
 fi
 python3 $T/normalize-headings.py --style $STY "$R/draft.md" >/dev/null
 # 3 polish
 if [ $STUB = 1 ]; then cp "$R/draft.md" "$R/chapter.md"; else log "step3 polish (MiMo)"; python3 $T/polish.py "$R/draft.md" --bible "$BIB" --out "$R/chapter.md" | tee -a "$R/run.log" >&2; fi
 python3 $T/normalize-headings.py --style $STY "$R/chapter.md" >/dev/null
+if [ $STUB = 0 ] && [ $(wc_ "$R/chapter.md") -lt $MINW ]; then log "polished chapter short ($(wc_ "$R/chapter.md") < $MINW): one more expand + polish"
+  cp "$R/chapter.md" "$R/draft.md"; $ON expand "$R" --min $(( MINW * 105 / 100 )) --target $TW --passes 2 2>>"$R/run.log" >/dev/null
+  python3 $T/polish.py "$R/draft.md" --bible "$BIB" --out "$R/chapter.md" | tee -a "$R/run.log" >&2; python3 $T/normalize-headings.py --style $STY "$R/chapter.md" >/dev/null
+  [ $(wc_ "$R/chapter.md") -ge $MINW ] || { log "chapter still short -> quarantine (never published short)"; $ON quarantine "$B" "$R" $N "short chapter" >&2; exit 5; }; fi
 # gates
 NL=; [ $STUB = 1 ] && NL=--no-llm
 ATT=$(ls -d $RUNS/$ID-$(printf %04d $N)-* 2>/dev/null | wc -l); [ $ATT -ge ${MAXATT:-3} ] && SOFTMAX=999

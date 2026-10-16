@@ -11,7 +11,7 @@ B=$INKOS_PROJECT/books/smoke
 python3 - > $TMP/seed.md <<'PY'
 import random
 r = random.Random(1); P = "gió núi sương mù bậc đá kiếm khí đan lô linh thạch sư huynh trưởng lão ngọn đèn suối lạnh ánh trăng tiếng chuông lá trúc phù lục trận pháp cổ thụ".split()
-print("# Chương 0: seed\n"); [print(f'Lâm Phong {" ".join(r.choice(P) for _ in range(12))} lần {i}. "Ta đi {i}," hắn nói.\n') for i in range(130)]
+print("# Chương 0: seed\n"); [print(f'Lâm Phong {" ".join(r.choice(P) for _ in range(12))} lần {i}. "Ta đi {i}," hắn nói.\n') for i in range(230)]
 PY
 export ONOVEL_STUB_TEXT=$TMP/seed.md
 fail(){ echo "SMOKE FAIL: $*" >&2; exit 1; }

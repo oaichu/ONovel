@@ -5,7 +5,7 @@ os.environ.setdefault("ONOVEL_LESSONS", "/nonexistent-lessons")  # never write t
 POOL = ("gió núi sương mù bậc đá kiếm khí đan lô linh thạch tàng kinh các sư huynh sư muội trưởng lão ngọn đèn mái ngói vách đá suối lạnh "
         "ánh trăng tiếng chuông bóng tối lá trúc mùi máu áo bào phù lục trận pháp cổ thụ bờ vực ngựa hoang quán trọ chén trà con đường "
         "thôn nhỏ dòng sông cánh cổng ngọn lửa lò rèn chiếc túi").split()
-def chapter_text(n, words=2000, extra=""):
+def chapter_text(n, words=3300, extra=""):
     import random
     rnd = random.Random(n * 7919 + words); body = []; total = 0; i = 0
     while total < words:

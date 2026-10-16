@@ -93,3 +93,29 @@ def approve_existing(book, n, file, g):
         cur = load(book, n); st = "PUBLISHED" if cur and cur.get("status") == "PUBLISHED" and cur.get("sha256") == gates.sha(text) else "COMMITTED"
         return record(book, n, st, sha=gates.sha(text), gate=g, file=os.path.basename(file), detail="regate " + gates.summary(g))
     return record(book, n, "QUARANTINED", sha=gates.sha(text), gate=g, file=os.path.basename(file), detail="regate " + gates.summary(g))
+def revise_commit(book, run_dir, n, file):
+    """Replace an existing (usually published) chapter with a gated revision. Old text kept in .onovel/revisions/.
+    Publishing happens again through publish-inkos.sh (manifest COMMITTED + PASS + sha)."""
+    chap = os.path.join(run_dir, "chapter.md"); text = open(chap, encoding="utf-8").read()
+    g = json.load(open(os.path.join(run_dir, "gate.json"), encoding="utf-8"))
+    if g.get("verdict") != "PASS" or g.get("sha256") != gates.sha(text): raise TxnError("revise: gate not PASS or sha mismatch")
+    rc = gates.run_all(book, chap, n, use_llm=False, soft_max=10**6, retries=0, canon=lambda b, c, k: gates.verdict("canon", c, text, [], [], [], None, llm=False))
+    if rc["verdict"] != "PASS": raise TxnError("revise: deterministic recheck failed")
+    old = open(file, encoding="utf-8").read(); rv = os.path.join(book, ".onovel", "revisions"); os.makedirs(rv, exist_ok=True)
+    bak = os.path.join(rv, f"{n:04d}-{time.strftime('%Y%m%dT%H%M%S')}.md"); atomic_write(bak, old)
+    try:
+        atomic_write(file, text); state.revise_chapter(book, n, text, os.path.basename(file))
+    except Exception as e:
+        atomic_write(file, old); raise TxnError(f"revise rolled back: {e}")
+    m = load(book, n) or {"book": os.path.basename(os.path.normpath(book)), "n": n}
+    m.setdefault("revisions", []).append({"ts": gates.now(), "run_dir": run_dir, "old_sha256": gates.sha(old), "backup": bak, "words": [gates.count_words(old), gates.count_words(text)]})
+    m["sha256"] = gates.sha(text); m["gate"] = g; m["file"] = os.path.basename(file); save(book, _hist(m, "COMMITTED", f"REVISED {gates.summary(g)}"))
+    return m
+def revise_quarantine(book, run_dir, n, reason):
+    """A failed revision never touches the live chapter/manifest status; it is only recorded + copied to quarantine."""
+    qroot = os.path.join(os.path.dirname(os.path.normpath(run_dir)), "quarantine"); os.makedirs(qroot, exist_ok=True)
+    dst = os.path.join(qroot, os.path.basename(os.path.normpath(run_dir)))
+    if not os.path.exists(dst): shutil.copytree(run_dir, dst)
+    m = load(book, n)
+    if m: m.setdefault("revision_failures", []).append({"ts": gates.now(), "run_dir": dst, "reason": str(reason)[:300]}); save(book, m)
+    return dst
