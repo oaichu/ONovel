@@ -32,5 +32,5 @@ def _glm(prompt, out):
     """glm.py stderr goes to the run's run.log so progress stays visible (and the supervisor sees a live log)."""
     rl = os.path.join(os.path.dirname(out), "run.log")
     with open(rl, "a", encoding="utf-8") as f:
-        f.write(f"expand: calling free model chain for {os.path.basename(out)}\n"); f.flush()
-        return subprocess.run(["timeout", "3600", sys.executable, os.path.join(TOOLS, "glm.py"), prompt, out], stderr=f).returncode
+        f.write(f"expand: calling MiMo (fallback free)  for {os.path.basename(out)}\n"); f.flush()
+        return subprocess.run(["timeout", "3600", sys.executable, os.path.join(TOOLS, "gen.py"), prompt, out], stderr=f).returncode

@@ -13,7 +13,7 @@
 # Exit: 0 committed, 1 gates FAIL, 2 setup error, 3 LLM failure, 4 free LLMs blocked, 5 ERROR/quarantine or commit failure.
 set -uo pipefail
 source ~/.profile >/dev/null 2>&1; I=${ONOVEL_HOME:-/CODE/inkos}; eval "$(grep '^export ' $I/run-inkos.sh 2>/dev/null)"
-T=$I/tools; ON="$I/bin/onovel"; P=${INKOS_PROJECT:-/CODE/inkos-books/xemtruyen}; GM=${NOVEL_GEMINI_MODEL:-gemini-3-8-flash}; LLM=${NOVEL_LLM:-gemini}
+T=$I/tools; ON="$I/bin/onovel"; P=${INKOS_PROJECT:-/CODE/inkos-books/xemtruyen}; GM=${NOVEL_GEMINI_MODEL:-gemini-3-8-flash}; LLM=${NOVEL_LLM:-mimo}; export NOVEL_LLM=$LLM
 DRY=0; STUB=0; while [[ ${1:-} == --* ]]; do case $1 in --dry-run) DRY=1;; --stub) STUB=1;; esac; shift; done
 Q=${1:?usage: novel.sh [--dry-run] [--stub] <book> [hint]}; shift; HINT="$*"
 case $Q in tien|tt) Q=tien-tro;; dkgh) Q=dieu-khoan-gia-han;; pnntl) Q=pham-nhan-nghich-thien-luc;; tuc) Q=tuc-the;; esac
@@ -42,7 +42,7 @@ gem(){ # gem <prompt-file> <out>   step 1/2 LLM: Gemini (pi-gemini/Antigravity, 
     grep -qiE "authenticat|login|unauthori|401" "$2.err" && { touch $GD; log "gemini auth failure -> flag $GD set for 1h"; }
     log "Gemini failed rc=$rc: $(tail -2 "$2.err" | tr '\n' ' ' | cut -c1-300) -> fallback OpenRouter FREE (glm.py)"
   fi
-  timeout 3600 python3 $T/glm.py "$f" "$2" 2> >(tee "$2.err" >> "$R/run.log"); local rc=$?; sleep 1  # live progress in run.log (supervisor sees it)
+  timeout 3600 python3 $T/gen.py "$f" "$2" 2> >(tee "$2.err" >> "$R/run.log"); local rc=$?; sleep 1  # live progress in run.log (supervisor sees it)
   [ $rc -eq 4 ] && { log "LLM BLOCKED (gemini + free quota): $(tail -1 "$2.err")"; echo "[$(date '+%F %T')] $ID ch$N: gemini and all OpenRouter free models blocked" >> $RUNS/llm-blocked.txt; exit 4; }
   [ $rc -eq 0 ] && [ -s "$2" ] || { log "LLM failed rc=$rc: $(tail -3 "$2.err")"; return 1; }; return 0; }
 # 1 plan

@@ -15,8 +15,8 @@ def parse_scenes(plan, max_scenes=5):
 def _glm(prompt, out):
     rl = os.path.join(os.path.dirname(out), "run.log")
     with open(rl, "a", encoding="utf-8") as f:
-        f.write(f"scene draft: free model chain for {os.path.basename(out)}\n"); f.flush()
-        return subprocess.run(["timeout", "1800", sys.executable, os.path.join(TOOLS, "glm.py"), prompt, out], stderr=f).returncode
+        f.write(f"scene draft: MiMo (fallback free)  for {os.path.basename(out)}\n"); f.flush()
+        return subprocess.run(["timeout", "1800", sys.executable, os.path.join(TOOLS, "gen.py"), prompt, out], stderr=f).returncode
 def strip_heading(t):
     lines = t.strip().splitlines()
     while lines and (lines[0].lstrip().startswith("#") or re.match(r"\s*\**\s*Cảnh\s+\d+", lines[0]) or not lines[0].strip()): lines.pop(0)
