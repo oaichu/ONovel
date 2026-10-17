@@ -128,10 +128,11 @@ def extract(book, text, chat=None):
     if not isinstance(d, dict) or not str(d.get("summary", "")).strip(): raise ValueError("extraction missing summary")
     return d
 # ---------- the single writer ----------
-def commit_chapter(book, n, title, text, ex, file, actor="publish-txn"):
+def commit_chapter(book, n, title, text, ex, file, actor="publish-txn", replace=False):
+    """replace=True: (re)ingest an existing chapter row, e.g. site chapters imported by tools/ingest-site.py."""
     with writer(book, actor) as c:
         row = c.execute("SELECT status FROM chapters WHERE n=?", (n,)).fetchone()
-        if row and row["status"] in ("COMMITTED", "PUBLISHED"): raise RuntimeError(f"chapter {n} already committed")
+        if row and row["status"] in ("COMMITTED", "PUBLISHED") and not replace: raise RuntimeError(f"chapter {n} already committed")
         c.execute("INSERT OR REPLACE INTO chapters(n,title,sha256,words,status,summary,file,committed_at) VALUES(?,?,?,?,?,?,?,?)",
                   (n, title, sha(text), count_words(text), "COMMITTED", str(ex.get("summary", "")).strip(), file, now()))
         if ex.get("current_state"): c.execute("INSERT OR REPLACE INTO snapshots VALUES(?,?,?)", (n, str(ex["current_state"]).strip(), now()))
