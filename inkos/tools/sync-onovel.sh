@@ -59,15 +59,15 @@ cp -a "$SRC_ROOT/inkos/tools/sync-onovel.sh" "$REPO_DIR/inkos/tools/sync-onovel.
 chmod +x "$REPO_DIR/inkos/tools/sync-onovel.sh" "$SRC_ROOT/inkos/tools/sync-onovel.sh"
 
 # CI workflow lives in inkos/ci (single source)
-# (pushing .github/workflows needs a token with `workflow` scope; opt in with ONOVEL_SYNC_WORKFLOW=1)
-if [[ "${ONOVEL_SYNC_WORKFLOW:-0}" == 1 ]]; then mkdir -p "$REPO_DIR/.github/workflows"; cp "$SRC_ROOT/inkos/ci/github-ci.yml" "$REPO_DIR/.github/workflows/ci.yml"; fi
+# (pushing .github/workflows needs a token with `workflow` scope; ONOVEL_SYNC_WORKFLOW=0 skips the copy)
+if [[ "${ONOVEL_SYNC_WORKFLOW:-1}" == 1 ]]; then mkdir -p "$REPO_DIR/.github/workflows"; cp "$SRC_ROOT/inkos/ci/github-ci.yml" "$REPO_DIR/.github/workflows/ci.yml"; fi
 
 # Tests must pass before anything is committed (mocked LLM, no network)
-PY_T="${ONOVEL_PYTHON:-python3}"
-if "$PY_T" -c 'import pytest' 2>/dev/null; then
-  ( cd "$REPO_DIR" && ONOVEL_HOME="$REPO_DIR/inkos" "$PY_T" -m pytest -q inkos/tests ) || die "tests failed; not committing"
-  ( ONOVEL_HOME="$REPO_DIR/inkos" bash "$REPO_DIR/inkos/tests/smoke.sh" ) || die "smoke test failed; not committing"
-else echo "sync-onovel: WARN pytest not installed (set ONOVEL_PYTHON); CI will run the tests"; fi
+# Audit A01: no tests -> no commit (missing pytest is a hard failure, not a warning).
+PY_T="${ONOVEL_PYTHON:-}"; [[ -z "$PY_T" && -x /home/box/.venvs/onovel-test/bin/python ]] && PY_T=/home/box/.venvs/onovel-test/bin/python; PY_T="${PY_T:-python3}"
+"$PY_T" -c 'import pytest' 2>/dev/null || die "pytest not available for $PY_T (set ONOVEL_PYTHON to a python with pytest); not committing"
+( cd "$REPO_DIR" && ONOVEL_HOME="$REPO_DIR/inkos" ONOVEL_LESSONS=/nonexistent-lessons "$PY_T" -m pytest -q -p no:cacheprovider inkos/tests ) || die "tests failed; not committing"
+( ONOVEL_HOME="$REPO_DIR/inkos" bash "$REPO_DIR/inkos/tests/smoke.sh" ) || die "smoke test failed; not committing"
 
 # Secret scan (fail if literal named keys / sk-or- / Bearer tokens look embedded)
 SCAN_TMP="$(mktemp)"
@@ -84,18 +84,14 @@ if rg -n -e '(BAI_API_KEY|GEMINI_API_KEY|CLOUDFLARE_API_TOKEN|INKOS_LLM_API_KEY|
   exit 2
 fi
 
-if command -v gitleaks >/dev/null 2>&1; then
-  # Allow known test-fixture strings in verify_agent_kit.py only
-  if ! gitleaks detect --source "$REPO_DIR" --no-git --no-banner -v 2>"$SCAN_TMP.gl"; then
-    if rg -q 'sk-(test|record|mcp)testsecret' "$SCAN_TMP.gl" && \
-       ! rg -q 'Secret:.*sk-(?!test|record|mcp)' "$SCAN_TMP.gl"; then
-      echo "sync-onovel: gitleaks flagged only known test fixtures — continuing"
-    else
-      echo "sync-onovel: ABORT — gitleaks found potential secrets (see details locally; values not printed)." >&2
-      exit 2
-    fi
+GL="$(command -v gitleaks || true)"; [[ -z "$GL" && -x "$HOME/.local/bin/gitleaks" ]] && GL="$HOME/.local/bin/gitleaks"
+if [[ -n "$GL" ]]; then
+  # known fake fixtures (verify_agent_kit.py) are allowlisted in inkos/ci/gitleaks.toml; values are always redacted
+  if ! "$GL" detect --source "$REPO_DIR" --no-git --no-banner --redact --config "$REPO_DIR/inkos/ci/gitleaks.toml" >"$SCAN_TMP.gl" 2>&1; then
+    echo "sync-onovel: ABORT — gitleaks found potential secrets (run gitleaks with --redact locally; values not printed)." >&2
+    exit 2
   fi
-fi
+else echo "sync-onovel: WARN gitleaks not installed; CI secrets job will scan"; fi
 
 cd "$REPO_DIR"
 git add -A

@@ -94,16 +94,17 @@ def secrets(book):
         s["knowers"] = [r["who"] for r in _rows(book, "SELECT who FROM secret_knowers WHERE secret_id=?", (s["id"],))]; out.append(s)
     return out
 # ---------- gate ----------
-def canon_gate(book, chap, n=None):
-    """Deterministic canon preflight: chapter id must be the next free id; state must be readable and migrated."""
+def canon_gate(book, chap, n=None, check_number=True):
+    """Deterministic canon preflight: chapter id must be the next free id; state must be readable and migrated.
+    check_number=False (regate / revision of an EXISTING chapter, audit A05): skip only the duplicate/sequence check."""
     text = open(chap, encoding="utf-8").read(); blocking = []
-    if n is None:
+    if n is None and check_number:
         m = re.search(r"Chương\s+(\d+)", text.split("\n", 1)[0]); n = int(m.group(1)) if m else None
     if exists(book):
         connect(book).execute("SELECT COUNT(*) FROM chapters").fetchone()
         if not _rows(book, "SELECT 1 FROM meta WHERE key='migrated'"): blocking.append(_issue("canon-not-migrated", "state.db chưa migrate"))
     else: blocking.append(_issue("canon-no-state", "chưa có state.db (onovel migrate)"))
-    if n is not None:
+    if n is not None and check_number:
         nx = next_chapter(book); row = chapter(book, n)
         if row and row["status"] in ("COMMITTED", "PUBLISHED"): blocking.append(_issue("canon-duplicate", f"chương {n} đã commit"))
         elif n != nx: blocking.append(_issue("canon-sequence", f"chương {n} khác chương kế tiếp {nx}"))

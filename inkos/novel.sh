@@ -10,11 +10,13 @@
 #     FAIL -> up to 3 MiMo minimal-fix rounds (tools/fix.py); ERROR -> quarantine (never published), exit 5.
 #   commit (onovel commit): transaction chapter file + canonical state, rollback on failure; per-chapter manifest .onovel/chapters/NNNN.json.
 #   Publishing is done by the caller (loop-book.sh -> publish-inkos.sh), which publishes only manifests with verdict PASS.
-# Exit: 0 committed, 1 gates FAIL, 2 setup error, 3 LLM failure, 4 free LLMs blocked, 5 ERROR/quarantine or commit failure.
+# Exit: 0 committed, 1 gates FAIL, 2 setup error, 3 LLM failure, 4 free LLMs blocked, 5 ERROR/quarantine or commit failure,
+#       6 gate FAIL with attempts exhausted (quarantined + STOP-<book>; gates are never relaxed).
 set -uo pipefail
 source ~/.profile >/dev/null 2>&1; I=${ONOVEL_HOME:-/CODE/inkos}; eval "$(grep '^export ' $I/run-inkos.sh 2>/dev/null)"
 T=$I/tools; ON="$I/bin/onovel"; P=${INKOS_PROJECT:-/CODE/inkos-books/xemtruyen}; GM=${NOVEL_GEMINI_MODEL:-gemini-3-8-flash}; LLM=${NOVEL_LLM:-mimo}; export NOVEL_LLM=$LLM
 DRY=0; STUB=0; while [[ ${1:-} == --* ]]; do case $1 in --dry-run) DRY=1;; --stub) STUB=1;; esac; shift; done
+[ $STUB = 1 ] && export ONOVEL_MOCK_LLM=${ONOVEL_MOCK_LLM:-1} GEN_VERCEL=0   # stub: fully offline (mocked judge/extraction, no provider key needed)
 Q=${1:?usage: novel.sh [--dry-run] [--stub] <book> [hint]}; shift; HINT="$*"
 case $Q in tien|tt) Q=tien-tro;; dkgh) Q=dieu-khoan-gia-han;; pnntl) Q=pham-nhan-nghich-thien-luc;; tuc) Q=tuc-the;; esac
 B="$P/books/$Q"; [ -d "$B" ] || { echo "ERROR: book '$Q' not found in $P/books" >&2; exit 2; }
@@ -75,8 +77,10 @@ if [ $STUB = 0 ] && [ $(wc_ "$R/chapter.md") -lt $MINW ]; then log "polished cha
   [ $(wc_ "$R/chapter.md") -ge $MINW ] || { log "chapter still short -> quarantine (never published short)"; $ON quarantine "$B" "$R" $N "short chapter" >&2; exit 5; }; fi
 # gates
 NL=; [ $STUB = 1 ] && NL=--no-llm
-ATT=$(ls -d $RUNS/$ID-$(printf %04d $N)-* 2>/dev/null | wc -l); [ $ATT -ge ${MAXATT:-3} ] && SOFTMAX=999
-log "gates (style, locked facts, layout, canon): attempt $ATT, rule-based issues block, LLM-judged soft issues allowed <= $SOFTMAX, judge/API error = ERROR"
+# attempts = earlier runs of this chapter whose gates ended FAIL (LLM/setup failures don't count). Gates are NEVER relaxed (audit A04):
+# exhaustion -> quarantine + runs/needs-review.txt + STOP-<book> flag (loop-book.sh/supervisor stop; delete the flag after review).
+ATT=1; for d in $RUNS/$ID-$(printf %04d $N)-*/; do [ "${d%/}" = "$R" ] && continue; [ -f "$d/gate.json" ] && python3 -c "import json,sys;sys.exit(0 if json.load(open(sys.argv[1])).get('verdict')=='FAIL' else 1)" "$d/gate.json" 2>/dev/null && ATT=$((ATT+1)); done
+log "gates (style, locked facts, layout, canon): attempt $ATT/${MAXATT:-3}, rule-based + LLM high-severity issues block, other LLM issues allowed <= $SOFTMAX, judge/API error = ERROR"
 gate(){ local g; g=$($ON gate "$B" "$R/chapter.md" --n $N $NL --soft-max $SOFTMAX --out "$R/gate.json"); local rc=$?; log "gate: $g"; return $rc; }
 gate; rc=$?
 for k in 1 2 3; do [ $rc = 1 ] && [ $STUB = 0 ] || break
@@ -88,6 +92,12 @@ log "result: $RES"
 echo "book: $ID"; echo "chapter: $N"; echo "run: $R"; echo "verdict: $RES"; echo "summary: $(sed -n 2,20p "$R/plan.md" | tr '\n' ' ' | head -c 300)"
 if [ $RES != PASS ]; then $ON learn "$B" "$R/gate.json" $N 2>/dev/null || true; fi
 if [ $RES = ERROR ]; then $ON quarantine "$B" "$R" $N "gate ERROR: $(python3 -c "import json;print('; '.join(json.load(open('$R/gate.json'))['errors'])[:200])" 2>/dev/null)" | tee -a "$R/run.log" >&2; exit 5; fi
+if [ $RES = FAIL ] && [ $ATT -ge ${MAXATT:-3} ]; then
+  why="gates FAIL on attempt $ATT/${MAXATT:-3}: attempts exhausted, gates not relaxed; manual review needed"
+  $ON quarantine "$B" "$R" $N "$why" | tee -a "$R/run.log" >&2
+  echo "[$(date '+%F %T')] $ID ch$N: $why (run $R)" >> $RUNS/needs-review.txt
+  [ $DRY = 1 ] || [ $STUB = 1 ] || echo "[$(date '+%F %T')] auto-stop by novel.sh: $ID ch$N $why. Review runs/quarantine, then delete this file." > $RUNS/STOP-$ID
+  log "ATTEMPTS EXHAUSTED -> quarantined, notified runs/needs-review.txt, loop stop flag $RUNS/STOP-$ID"; exit 6; fi
 [ $RES = FAIL ] && { log "gates failed: chapter kept in run dir only"; exit 1; }
 if [ $DRY = 1 ]; then log "dry-run: not committed"; exit 0; fi
 log "commit transaction (chapter + canonical state)"; $ON commit "$B" "$R" $N 2>&1 | tee -a "$R/run.log" >&2; [ ${PIPESTATUS[0]} = 0 ] || { log "commit failed -> quarantined"; exit 5; }

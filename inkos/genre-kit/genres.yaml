@@ -20,10 +20,18 @@ do-thi-di-nang:
   banned: [tại hạ, bản tọa, đạo hữu, ngươi, huynh, muội]
   llm_only: [ta]
   card: cards/do-thi-di-nang.md
+ngon-tinh-co-dai:
+  label: ngôn tình cổ đại / cổ trang / cung đấu
+  inkos_genre: other
+  register: "cổ phong; ta, ngươi, chàng, nàng, thiếp, công tử, tiểu thư, bổn cung, hoàng thượng, phụ thân, mẫu thân"
+  banned: [OK, okay, oke, app, internet, điện thoại, máy tính, xe hơi, ô tô, công ty, sếp, cà phê, selfie, share, like, drama, chill, cool, bro, xịn, vãi, đồng hồ, trường học]
+  llm_only: [tôi, anh, em, mày, tao]
+  card: cards/card-huyen-huyen-ngon-tinh.md
 # --- skill/card loading per book (restored 2026-10-15; read by tools/skills.py) ---
 skill_sets:
   tien-hiep: {skills: [worldbuilding, cultivation-rules, foreshadowing, character-psychology, etiquette-address, pacing, continuity-guardian, anti-ai-prose], cards: [card-dong-phuong-tien-hiep, card-truyen-thong-huyen-huyen, card-sang-diem]}
   ngon-tinh-co-dai: {skills: [worldbuilding, foreshadowing, character-psychology, romance-arcs, etiquette-address, palace-intrigue, pacing, continuity-guardian, anti-ai-prose], cards: [card-huyen-huyen-ngon-tinh]}
+  do-thi-di-nang: {skills: [worldbuilding, foreshadowing, character-psychology, etiquette-address, pacing, continuity-guardian, anti-ai-prose], cards: [do-thi-di-nang]}
   ngon-tinh-hien-dai: {skills: [foreshadowing, character-psychology, romance-arcs, modern-cn-romance, palace-intrigue, etiquette-address, pacing, continuity-guardian, anti-ai-prose], cards: []}
 books:
   tien-tro: tien-hiep

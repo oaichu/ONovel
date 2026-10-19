@@ -59,3 +59,17 @@ def test_migrate_legacy(tmp_path):
     assert state.chapter(b, 1)["status"] == "PUBLISHED" and state.chapter(b, 2)["status"] == "COMMITTED" and "X gặp Y" in state.chapter(b, 1)["summary"]
     assert [x["content"] for x in state.open_foreshadowing(b, 3)] == ["[H1] bí mật thanh kiếm cổ"]  # visibility window
     assert state.next_chapter(b) == 3
+def test_mark_published_requires_publishable(book, run_dir):
+    d = run_dir(1, chapter_text(1)); txn.quarantine(book, d, 1, "test")
+    with pytest.raises(txn.TxnError): txn.mark_published(book, 1)
+    assert txn.load(book, 1)["status"] == "QUARANTINED"
+    d2 = run_dir(1, chapter_text(1), "ok"); gated(book, d2, 1); m = txn.commit(book, d2, 1, extract=lambda b, t: EX)
+    f = os.path.join(book, "chapters", m["file"]); open(f, "a").write("\nsửa tay\n")
+    with pytest.raises(txn.TxnError): txn.mark_published(book, 1)  # sha mismatch
+    assert txn.load(book, 1)["status"] == "COMMITTED"
+def test_mark_published_sqlite_error_raises(book, run_dir, monkeypatch):
+    d = run_dir(1, chapter_text(1)); gated(book, d, 1); txn.commit(book, d, 1, extract=lambda b, t: EX)
+    def bad(*a, **k): raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(state, "mark_published", bad)
+    with pytest.raises(txn.TxnError): txn.mark_published(book, 1)
+    assert txn.load(book, 1)["status"] == "COMMITTED"

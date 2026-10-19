@@ -12,6 +12,10 @@ def revise_expand(book, n, runs=None):
     if not fs: return {"n": n, "status": "MISSING"}
     f = os.path.join(book, "chapters", fs[0]); text = open(f, encoding="utf-8").read(); w0 = gates.count_words(text)
     if w0 >= MIN: return {"n": n, "status": "OK", "words": w0}
+    nfail = len((txn.load(book, n) or {}).get("revision_failures", []))
+    if nfail >= mf.get(m, "max_attempts"):  # audit A04: stop + notify, never loosen the gates
+        txn.notify(book, n, f"revision attempts exhausted ({nfail} failures >= max_attempts); manual review needed")
+        return {"n": n, "status": "EXHAUSTED", "words": w0, "reason": f"{nfail} revision failures"}
     runs = runs or os.environ.get("ONOVEL_RUNS", os.path.join(os.path.dirname(TOOLS), "runs"))
     rd = os.path.join(runs, f"{m['id']}-{n:04d}-rev-{time.strftime('%Y%m%dT%H%M%S')}"); os.makedirs(rd)
     _log(rd, f"revise-expand {m['id']} ch{n}: {w0} < {MIN} words")
@@ -31,9 +35,8 @@ def revise_expand(book, n, runs=None):
     _log(rd, "polish: " + pr.stdout.strip()[-300:])
     if not os.path.exists(os.path.join(rd, "chapter.md")): shutil.copy(os.path.join(rd, "draft.md"), os.path.join(rd, "chapter.md"))
     subprocess.run([sys.executable, os.path.join(TOOLS, "normalize-headings.py"), "--style", lay["heading_style"], os.path.join(rd, "chapter.md")], capture_output=True)
-    chap = os.path.join(rd, "chapter.md"); noncanon = lambda b, c, k: gates.verdict("canon", c, open(c, encoding="utf-8").read(), [], [], [], None, llm=False)
-    sm = mf.get(m, "soft_max")
-    if len((txn.load(book, n) or {}).get("revision_failures", [])) >= mf.get(m, "max_attempts") - 1: sm = 999  # same attempt policy as novel.sh
+    chap = os.path.join(rd, "chapter.md"); noncanon = lambda b, c, k: state.canon_gate(b, c, k, check_number=False)  # existing chapter: keep state checks, skip duplicate-number only
+    sm = mf.get(m, "soft_max")  # never relaxed (audit A04); attempts exhaustion is handled before any LLM work above
     def gate():
         g = gates.run_all(book, chap, n, use_llm=True, soft_max=sm, canon=noncanon)
         open(os.path.join(rd, "gate.json"), "w", encoding="utf-8").write(json.dumps(g, ensure_ascii=False, indent=1)); _log(rd, "gate: " + gates.summary(g)); return g

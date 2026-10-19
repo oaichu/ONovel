@@ -79,13 +79,25 @@ def check_publishable(book, n, file):
     if (m.get("gate") or {}).get("verdict") != "PASS": return "block", f"gate verdict {(m.get('gate') or {}).get('verdict')}"
     if not same: return "block", "sha mismatch (chapter changed after approval)"
     return "publish", "ok"
-def mark_published(book, n):
+def mark_published(book, n, file=None):
+    """Audit A06: only a chapter that check_publishable() approves can be marked; SQLite errors raise TxnError (manifest untouched)."""
     m = load(book, n)
     if not m: raise TxnError("no manifest")
-    if m["status"] != "PUBLISHED": save(book, _hist(m, "PUBLISHED", "site"))
+    file = file or (os.path.join(book, "chapters", m["file"]) if m.get("file") else None)
+    if not file or not os.path.exists(file): raise TxnError(f"mark_published: chapter file missing ({m.get('file')})")
+    st, why = check_publishable(book, n, file)
+    if st not in ("publish", "published"): raise TxnError(f"mark_published: not publishable ({why})")
     try: state.mark_published(book, n)
-    except Exception: pass
+    except Exception as e: raise TxnError(f"mark_published: state.db update failed: {type(e).__name__}: {e}")
+    if m["status"] != "PUBLISHED": save(book, _hist(m, "PUBLISHED", "site"))
     return m
+def notify(book, n, msg, runs=None):
+    """Append a human-attention line to runs/needs-review.txt (attempt exhaustion, etc.)."""
+    runs = runs or os.environ.get("ONOVEL_RUNS", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "runs"))
+    try:
+        os.makedirs(runs, exist_ok=True)
+        with open(os.path.join(runs, "needs-review.txt"), "a", encoding="utf-8") as f: f.write(f"[{gates.now()}] {os.path.basename(os.path.normpath(book))} ch{n}: {msg}\n")
+    except OSError: pass
 def approve_existing(book, n, file, g):
     """For a chapter already in chapters/ (legacy/review flow): record its gate evidence; PASS -> COMMITTED, else QUARANTINED."""
     text = open(file, encoding="utf-8").read()
@@ -99,7 +111,7 @@ def revise_commit(book, run_dir, n, file):
     chap = os.path.join(run_dir, "chapter.md"); text = open(chap, encoding="utf-8").read()
     g = json.load(open(os.path.join(run_dir, "gate.json"), encoding="utf-8"))
     if g.get("verdict") != "PASS" or g.get("sha256") != gates.sha(text): raise TxnError("revise: gate not PASS or sha mismatch")
-    rc = gates.run_all(book, chap, n, use_llm=False, soft_max=10**6, retries=0, canon=lambda b, c, k: gates.verdict("canon", c, text, [], [], [], None, llm=False))
+    rc = gates.run_all(book, chap, n, use_llm=False, soft_max=10**6, retries=0, canon=lambda b, c, k: state.canon_gate(b, c, k, check_number=False))
     if rc["verdict"] != "PASS": raise TxnError("revise: deterministic recheck failed")
     old = open(file, encoding="utf-8").read(); rv = os.path.join(book, ".onovel", "revisions"); os.makedirs(rv, exist_ok=True)
     bak = os.path.join(rv, f"{n:04d}-{time.strftime('%Y%m%dT%H%M%S')}.md"); atomic_write(bak, old)

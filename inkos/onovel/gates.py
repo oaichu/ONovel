@@ -2,7 +2,8 @@
   {gate, verdict: PASS|FAIL|ERROR, chapter, sha256, blocking[], soft[], warnings[], error, llm, ts}
 issue = {rule_id, source: rule|llm, severity, confidence, evidence_span, reason, word, para}.
 Exit codes everywhere: PASS 0, FAIL 1, ERROR 2.  Gate-level: ERROR if an LLM pass was requested and failed (or the gate
-crashed); FAIL if any blocking issue; else PASS (soft issues are reported). combine(): ERROR > FAIL > soft_max check > PASS."""
+crashed); FAIL if any blocking issue (incl. LLM severity=high, see promote());
+else PASS (soft issues are reported; REVIEW items count as soft). combine(): ERROR > FAIL > soft_max check > PASS."""
 import os, re, json, hashlib, datetime
 EXIT = {"PASS": 0, "FAIL": 1, "ERROR": 2}
 def sha(text): return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -12,7 +13,15 @@ def count_words(text):
     text = re.sub(r"^---\n.*?\n---\n", "", text, flags=re.S)
     body = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
     return sum(1 for t in body.split() if re.search(r"\w", t))
+def promote(blocking, soft):
+    """Audit A04: an LLM finding with severity high (verified evidence, confidence >= judge.MIN_CONF, not a REVIEW item) is BLOCKING."""
+    blocking = list(blocking); keep = []
+    for v in soft:
+        if v.get("severity") == "high" and not v.get("review"): blocking.append(dict(v, blocking_reason="llm-high-severity"))
+        else: keep.append(v)
+    return blocking, keep
 def verdict(gate, chap, text, blocking, soft, warnings, err, llm=True):
+    blocking, soft = promote(blocking, soft)
     v = "ERROR" if err else "FAIL" if blocking else "PASS"
     r = dict(gate=gate, verdict=v, chapter=chap, sha256=sha(text), blocking=blocking, soft=soft, warnings=warnings, error=err, llm=llm, ts=now())
     # legacy readers (old novel.sh / publish / review scripts): issues/violations/llm_error

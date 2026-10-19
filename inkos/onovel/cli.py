@@ -10,11 +10,12 @@ def cmd_new(a):
     root = os.path.join(a.project or os.environ.get("INKOS_PROJECT", "/CODE/inkos-books/xemtruyen"), "books", a.book)
     if os.path.exists(root): sys.exit(f"onovel new: {root} exists")
     g = mf.genres().get(a.genre) or sys.exit(f"onovel new: unknown genre {a.genre}")
-    tien = a.genre == "tien-hiep"
-    m = dict(schema_version=1, id=a.book, title=a.title, genre_id=a.genre, skill_set=a.genre if a.genre in mf.genres().get("skill_sets", {}) else "tien-hiep",
+    if a.genre not in (mf.genres().get("skill_sets") or {}): sys.exit(f"onovel new: genre {a.genre} has no skill_set in genres.yaml (no silent tien-hiep default)")
+    tien = a.genre == "tien-hiep"; codai = a.genre == "ngon-tinh-co-dai"
+    m = dict(schema_version=1, id=a.book, title=a.title, genre_id=a.genre, skill_set=a.genre,
              subgenre=a.subgenre or g.get("label", a.genre), audience=a.audience, language="vi", register=g.get("register", ""), style_profile="style-bible.md",
              narration="Ngôi thứ 3 giới hạn",
-             xung_ho=dict(rules=(["tu sĩ không bao giờ xưng 'tôi'; dùng ta/ngươi/tại hạ/bản tọa/vãn bối", "chỉ phàm nhân mới có thể xưng 'tôi'"] if tien else ["xưng hô hiện đại tự nhiên theo quan hệ"]) + ["thoại trong ngoặc kép thẳng, không dấu gạch dài"],
+             xung_ho=dict(rules=(["tu sĩ không bao giờ xưng 'tôi'; dùng ta/ngươi/tại hạ/bản tọa/vãn bối", "chỉ phàm nhân mới có thể xưng 'tôi'"] if tien else ["xưng hô cổ phong (ta/ngươi/chàng/nàng/thiếp...), không xưng hô hiện đại"] if codai else ["xưng hô hiện đại tự nhiên theo quan hệ"]) + ["thoại trong ngoặc kép thẳng, không dấu gạch dài"],
                           **({"forbidden_for": {"tu sĩ": ["tôi"]}} if tien else {})),
              layout=dict(heading_style="colon", blocking=["heading", "length"], target_words=3200, min_words=3000, max_words=8000),
              soft_max=3, max_attempts=3, state_domains=(["realms", "secrets", "treasures", "promises", "foreshadowing"] if tien else ["relationships", "secrets", "promises", "foreshadowing"]))
@@ -45,7 +46,7 @@ def main(argv=None):
     p = sp.add_parser("commit"); p.add_argument("book"); p.add_argument("run_dir"); p.add_argument("n", type=int)
     p = sp.add_parser("quarantine"); p.add_argument("book"); p.add_argument("run_dir"); p.add_argument("n", type=int); p.add_argument("reason")
     p = sp.add_parser("check-publish"); p.add_argument("book"); p.add_argument("n", type=int); p.add_argument("file")
-    p = sp.add_parser("mark-published"); p.add_argument("book"); p.add_argument("n", type=int)
+    p = sp.add_parser("mark-published"); p.add_argument("book"); p.add_argument("n", type=int); p.add_argument("file", nargs="?")
     p = sp.add_parser("regate"); p.add_argument("book"); p.add_argument("n", type=int); p.add_argument("--no-llm", action="store_true"); p.add_argument("--out")
     p = sp.add_parser("expand"); p.add_argument("run_dir"); p.add_argument("--min", type=int, default=3000); p.add_argument("--target", type=int, default=3200); p.add_argument("--passes", type=int, default=2)
     p = sp.add_parser("draft-scenes"); p.add_argument("run_dir"); p.add_argument("n", type=int); p.add_argument("--target", type=int, default=3200)
@@ -91,11 +92,13 @@ def main(argv=None):
     if a.cmd == "quarantine": txn.quarantine(b, a.run_dir, a.n, a.reason); print(f"QUARANTINED ch{a.n}: {a.reason}"); return 0
     if a.cmd == "check-publish":
         st, why = txn.check_publishable(b, a.n, a.file); print(f"{st} {why}"); return 0 if st != "block" else 1
-    if a.cmd == "mark-published": txn.mark_published(b, a.n); return 0
+    if a.cmd == "mark-published":
+        try: txn.mark_published(b, a.n, a.file); return 0
+        except txn.TxnError as e: print(f"MARK-PUBLISHED REFUSED ch{a.n}: {e}", file=sys.stderr); return 1
     if a.cmd == "regate":
         fs = [f for f in state.chapter_files(b) if int(re.match(r"\d+", f).group(0)) == a.n] or sys.exit(f"no chapter {a.n}")
         f = os.path.join(b, "chapters", fs[0]); m = mf.load(b)
-        g = gates.run_all(b, f, None, use_llm=not a.no_llm, soft_max=mf.get(m, "soft_max"), canon=lambda bk, ch, n: gates.verdict("canon", ch, open(ch, encoding="utf-8").read(), [], [], [], None, llm=False))
+        g = gates.run_all(b, f, None, use_llm=not a.no_llm, soft_max=mf.get(m, "soft_max"), canon=lambda bk, ch, n: state.canon_gate(bk, ch, n, check_number=False))
         if a.out: atomic_write(a.out, json.dumps(g, ensure_ascii=False, indent=1))
         r = txn.approve_existing(b, a.n, f, g); print(f"ch{a.n} {r['status']} {gates.summary(g)}"); return gates.EXIT[g["verdict"]]
     if a.cmd == "expand":

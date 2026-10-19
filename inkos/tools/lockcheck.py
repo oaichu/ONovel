@@ -31,7 +31,10 @@ def check(book, chap, use_llm=True, chat=None):
                 "\n\nSỰ THẬT KHÓA:\n" + fl + "\n\nCHƯƠNG:\n" + text)
         try:
             ids = {f["id"] for f in facts}
-            soft = [dict(v, rule_id="fact:" + v["rule_id"]) for v in judge.judge(task, text, chat=chat) if v["rule_id"] in ids]
+            # unknown rule ids are never dropped silently (audit A03): kept as REVIEW soft issues
+            soft = [dict(v, rule_id="fact:" + v["rule_id"]) if v["rule_id"] in ids else
+                    dict(v, rule_id="fact:unknown:" + v["rule_id"], severity="low", review=True, review_reason="rule_id is not an active locked fact")
+                    for v in judge.judge(task, text, chat=chat)]
         except Exception as e: err = f"{type(e).__name__}: {e}"[:300]
     r = gates.verdict("lock", chap, text, blocking, soft, [], err, llm=use_llm and bool(facts))
     r["active_facts"] = [f["id"] for f in facts]; return r

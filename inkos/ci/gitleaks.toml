@@ -1,0 +1,7 @@
+# gitleaks config for oaichu/ONovel (used by .github/workflows/ci.yml and tools/sync-onovel.sh)
+title = "onovel"
+[extend]
+useDefault = true
+[allowlist]
+description = "known fake test fixtures"
+paths = ['''(^|/)verify_agent_kit\.py$''']

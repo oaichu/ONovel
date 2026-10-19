@@ -1,19 +1,36 @@
-# ONovel CI (source: inkos/ci/github-ci.yml, copied to .github/workflows/ci.yml by inkos/tools/sync-onovel.sh)
+# ONovel CI (source: inkos/ci/github-ci.yml; tools/sync-onovel.sh copies it to .github/workflows/ci.yml)
 name: ci
 on: [push, pull_request]
+permissions: { contents: read }
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install pytest pyyaml jsonschema
-      - name: pytest (mocked LLM, no network)
-        env: { ONOVEL_HOME: "${{ github.workspace }}/inkos", ONOVEL_LESSONS: "${{ github.workspace }}/lessons-library", ONOVEL_MOCK_LLM: "" }
+      - name: pytest (mocked LLM, no network, no keys)
+        env: { ONOVEL_HOME: "${{ github.workspace }}/inkos", ONOVEL_LESSONS: "/nonexistent-lessons", ONOVEL_MOCK_LLM: "" }
         run: python -m pytest -q inkos/tests
-      - name: shell smoke test (mocked LLM)
+      - name: shell smoke test (stub mode, fully offline)
         env: { ONOVEL_HOME: "${{ github.workspace }}/inkos" }
         run: bash inkos/tests/smoke.sh
       - name: bash syntax
         run: for f in inkos/*.sh inkos/tools/*.sh inkos/tests/*.sh inkos/bin/onovel; do bash -n "$f"; done
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: gitleaks (full history, values redacted)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar xz gitleaks
+          ./gitleaks detect --source . --config inkos/ci/gitleaks.toml --no-banner --redact
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck (error severity only; warnings in legacy one-liners are not blocking)
+        run: shellcheck -S error inkos/*.sh inkos/tools/*.sh inkos/tests/*.sh
