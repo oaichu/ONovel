@@ -59,8 +59,9 @@ cp -a "$SRC_ROOT/inkos/tools/sync-onovel.sh" "$REPO_DIR/inkos/tools/sync-onovel.
 chmod +x "$REPO_DIR/inkos/tools/sync-onovel.sh" "$SRC_ROOT/inkos/tools/sync-onovel.sh"
 
 # CI workflow lives in inkos/ci (single source)
-# (pushing .github/workflows needs a token with `workflow` scope; ONOVEL_SYNC_WORKFLOW=0 skips the copy)
-if [[ "${ONOVEL_SYNC_WORKFLOW:-1}" == 1 ]]; then mkdir -p "$REPO_DIR/.github/workflows"; cp "$SRC_ROOT/inkos/ci/github-ci.yml" "$REPO_DIR/.github/workflows/ci.yml"; fi
+# (pushing .github/workflows needs a token with `workflow` scope, which the box gh token lacks as of 2026-10-19: opt in with ONOVEL_SYNC_WORKFLOW=1
+#  after `gh auth refresh -s workflow`; without it the push of the whole sync is rejected)
+if [[ "${ONOVEL_SYNC_WORKFLOW:-0}" == 1 ]]; then mkdir -p "$REPO_DIR/.github/workflows"; cp "$SRC_ROOT/inkos/ci/github-ci.yml" "$REPO_DIR/.github/workflows/ci.yml"; fi
 
 # Tests must pass before anything is committed (mocked LLM, no network)
 # Audit A01: no tests -> no commit (missing pytest is a hard failure, not a warning).
